@@ -1,5 +1,7 @@
 # V1M-Maker
-Using Quadrature Disambiguation Edge Detection to convert PGM/PPM files into V1M. Coded on a linux environment.
+Using Quadrature Disambiguation Edge Detection to convert PGM/PPM files into V1M. Coded on a linux environment, so windows most likely won't work. The V1M file will be used to research whether Tensorflow will recognize the compressed image as its uncompressed counterpart.
+
+Current state is that only PGM files can be converted into V1M format. Support for PGM will be added later.
 
 # Requirements
 - Cmake
