@@ -4,7 +4,9 @@
 #include <ostream>
 #include <math.h>
 #include <map>
+#include <set>
 #include <opencv2/opencv.hpp>
+#include <filesystem>
 
 #include "constant.h"
 #include "filter.cpp"
@@ -15,8 +17,9 @@ int createMonochrome(int red, int green, int blue);
 int createRedGreen(int blue, int green, int red);
 int createBlueYellow(int blue, int green, int red);
 int setHeader(string mNum, int width, int height, int filterDiam, int vertSpace, int horSpace, int firstHorPos, int firstVertPos, ofstream &of);
-void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers);
+void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers, int* lastPoints);
 float bump( float x);
+void getDiff(ifstream &file, int* diff);
 
 map<int, vector<Filter>> pair_filters;
 map<int, vector<int>> col_row;
@@ -24,85 +27,117 @@ vector<int> col_vals;
 
 int main(int argc, char *argv[]) {
     string command = argv[1];
+    vector<string> files;
+    if(command == "ALL") {
+        for(const auto & entry : filesystem::directory_iterator(to_convert)) {
+            filesystem::path filepath = entry.path();
+            string filename_str = filepath.string();
+            filename_str.erase(filename_str.begin(), filename_str.begin() + 17);
 
-    // Parse ALL files
-    /*transform(command.begin(), command.end(), command.begin(), ::tolower); 
-
-    if(command == "all") {
-
-    }*/
-
-    ifstream file(to_convert + command + ".pgm");
-    ifstream filetxt(to_convert + command + ".txt");
-
-    if(!file.good() || !filetxt.good()) {
-        cerr << "Error! One of the files does not exist." << endl;
-        exit(-1);
-    }
-
-    // Disgusting parsing of the PGM file
-    string line;
-    getline(file, line);
-    cout << "Version: " << line << endl;
-    getline(file, line);
-    cout << "Size (W x H): " << line << endl;
-    getline(file, line);
-    cout << "Max gray value: " << line << endl;
-
-    // Creating the v1m file format
-    string convert = converted + "image.V1M";
-    ofstream to_file(convert);
-
-    // More disgusting parsing of the first 2 lines from the QDED text file
-    string linetxt;
-    getline(filetxt, linetxt);
-    getline(filetxt, linetxt);
-
-    // Gets the image stored into the image var
-    cv::Mat image;
-    image = cv::imread(to_convert + command + ".pgm", 1);
-
-    int headers[3];
-    setFilters(file, filetxt, image, headers);
-    cout << headers[0] << " " << headers[1] << " " << headers[2] << endl;
-    setHeader("V4", image.rows, image.cols, headers[0], row_space, col_space, headers[1], headers[2], to_file);
-
-    for(int i = 0; i < 31; i++) {
-        for(int j = 0; j < 55; j++) {
-            int8_t first = pair_filters[i].at(j).firstFil + 128;
-            int8_t second = pair_filters[i].at(j).secFil + 128;
-            int8_t third = pair_filters[i].at(j).thirdFil + 128;
-            int8_t fourth = pair_filters[i].at(j).fourthFil + 128;
-            int8_t fifth = pair_filters[i].at(j).fifthFil + 128;
-            //cout << pair_filters[i].at(j).firstFil << endl;
-
-            if(i == 0) {
-                            cout << pair_filters[i].at(j).firstFil << endl;
-
-                //cout << "balls" << first << " " << second << " " << third << " " << fourth << " " << fifth << endl;
+            if(filename_str.substr(filename_str.size() - 4) != ".txt") {
+                files.push_back(filename_str);
             }
-
-            to_file << first << second << third << fourth << fifth;
-            
         }
+
+        set<string> s(files.begin(), files.end());
+        files.assign(s.begin(), s.end());
+
+        for(string n : files) {
+            cout << n << endl;
+        }
+    } else {
+        files.push_back(command);
     }
-    /*cv::Mat ycrcb;
-    cv::cvtColor(image, ycrcb, cv::COLOR_BGR2YCrCb);
 
-    vector<cv::Mat> channels;
-    split(ycrcb, channels);
+    int current = 0;
+    while(current != files.size()) {
+        // Check if files exist, if so proceed
+        command = files.at(current);
+        ifstream file(to_convert + command);
+        string ext = command.substr(command.size() - 3);
+        command.erase(command.end() - 4, command.end());
 
-    channels[1] = 140;
-    //channels[2] = 0;
+        ifstream filetxt(to_convert + command + ".txt");
 
-    cv::Mat new_image;
-    merge(channels, new_image);
-    cvtColor(new_image, image, cv::COLOR_YCrCb2BGR);*/
+        if(!file.good() || !filetxt.good()) {
+            cerr << "Error! One of the files does not exist." << endl;
+            exit(-1);
+        }
 
+        // Disgusting parsing of the PGM/PPM file
+        string line;
+        getline(file, line);
+        cout << "Version: " << line << endl;
+        getline(file, line);
+        cout << "Size (W x H): " << line << endl;
+        getline(file, line);
+        cout << "Max gray value: " << line << endl;
 
-    cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE);
-    cv::imshow("Display Image", image);
-    cv::waitKey(0);
+        // Creating the V1M/V1R/V1B file format
+        string convert;
+        ofstream to_file;
+        if(ext == "ppm") {
+            convert = converted + command + ".v1r";
+            to_file.open(convert);   
+        } else {
+            convert = converted + command + ".v1m";
+            to_file.open(convert);
+        }
+
+        // More disgusting parsing of the first 2 lines from the QDED text file
+        string linetxt;
+        getline(filetxt, linetxt);
+        getline(filetxt, linetxt);
+
+        // Gets the image stored into the image var
+        cv::Mat image;
+        image = cv::imread(to_convert + command + "." + ext, 1);
+
+        int headers[3];
+        int lastPoints[2];
+        setFilters(file, filetxt, image, headers, lastPoints);
+        string magic = "V4";
+
+        if(ext == "ppm") {
+            magic = "V5";
+        }
+        
+        setHeader(magic, image.rows, image.cols, headers[0], row_space, col_space, headers[1], headers[2], to_file);
+        cout << lastPoints[0] << " " << lastPoints[1] << endl;
+        for(int i = 0; i < lastPoints[1] + 1; i++) {
+            for(int j = 0; j < lastPoints[0] + 1; j++) {
+                int8_t first = pair_filters[i].at(j).firstFil + 128;
+                int8_t second = pair_filters[i].at(j).secFil + 128;
+                int8_t third = pair_filters[i].at(j).thirdFil + 128;
+                int8_t fourth = pair_filters[i].at(j).fourthFil + 128;
+                int8_t fifth = pair_filters[i].at(j).fifthFil + 128;
+
+                to_file << first << second << third << fourth << fifth;
+
+                if(ext == "ppm") {
+                    int8_t rg = 0;
+                    //pair_filters[i].at(j).RGChrom + 128;
+                    int8_t by = 0;
+                    //pair_filters[i].at(j).BYChrom + 128;
+                    to_file << rg << by;
+                } else {
+                    int8_t rg = 0;
+                    //pair_filters[i].at(j).RGChrom + 128;
+                    int8_t by = 0;
+                    //pair_filters[i].at(j).BYChrom + 128;
+                    to_file << rg << by;
+                }
+            }
+        }
+
+        cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE);
+        cv::imshow("Display Image", image);
+        cv::waitKey(0);
+        file.close();
+        filetxt.close();
+        to_file.close();
+        current++;
+    }
 }
 
 int createMonochrome(int blue, int green, int red) {
@@ -145,13 +180,20 @@ int setHeader(string mNum, int width, int height, int filterDiam, int vertSpace,
     return 0;
 }
 
-void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers) {
+void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers, int* lastPoints) {
     bool first = true;
     vector<vector<Filter>> filters;
+    cv::cvtColor(image, image, cv::COLOR_BGR2YCrCb);
+    int pointx;
+    int pointy;
+
+    int diff[2]; 
+    getDiff(filetxt, diff);
+    int secondColVal = -1;
+    int secondRowVal = -1;
     while(filetxt.good()) {
         string parse[9];
         filetxt >> parse[0] >> parse[1] >> parse[2] >> parse[3] >> parse[4] >> parse[5] >> parse[6] >> parse[7] >> parse[8];
-        //cout << parse[0] << " " << parse[1] << " "  << parse[2] << " "  << parse[3] << " "  << parse[4] << " "  << parse[5] << " "  << parse[6] << " "  << parse[7] << "bep" << endl;
 
         // Disgusting way to check whether we've hit the end of the file
         if(parse[0] == "") {
@@ -170,6 +212,7 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers)
         filter[3] = stof(parse[6]);
         filter[4] = stof(parse[7]);        
 
+        // Bad way of confirming the first tile on the top left most area
         if(first == true) {
             headers[0] = dia;
             headers[1] = col;
@@ -178,7 +221,6 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers)
         }
 
         cv::Point p(col, row);
-        cv::circle(image, p, rad, (0, 0, 255), 1);
         int x = col;
         int y = row;
         int r = rad;
@@ -187,12 +229,21 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers)
         float thirdFilter = 0;
         float fourthFilter = 0;
         float fifthFilter = 0;
+        float rg = 0;
+        float by = 0;
 
-        int pointx = col / col_dif;
-        int pointy = row / row_dif;
-        cout << pointx << ", " << pointy << endl;
+        pointx = col / diff[0];
+        pointy = row / diff[1];
+
+        //pointx = col;
+        //pointy = row;
+
+        //cv::circle(image, p, rad, (0, 0, 255), 1);
+        //cout << pointx << ", " << pointy << endl;
 
         for (int px = x - r; px <= x + r; px++) {
+            float totalcy = 0;
+            float totalcz = 0;
             for (int py = y - r; py <= y + r; py++) {
                 int dx = x - px, dy = y - py;
                 
@@ -200,47 +251,34 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers)
                 // Point is part of the circle.
                     cv::Vec3b color = image.at<cv::Vec3b>(cv::Point(px, py));
                     float cx = color[0];
+                    float cy = color[1];
+                    float cz = color[2];
                     firstFilter += color[0] * filter[0];
                     secondFilter += color[0] * filter[1];
                     thirdFilter += color[0] * filter[2];
                     fourthFilter += color[0] * filter[3];
                     fifthFilter += color[0] * filter[4];
+                    totalcy += cy;
+                    totalcz += cz;
 
-                    //color[0] = color[0] * filter[0] * filter[1] * filter[2] * filter[3] * filter[4];
-                    //color[1] = cy;
-                    //color[2] = color[2] * filter[0] * filter[1] * filter[2] * filter[3] * filter[4];
-                    
-                    /*cx = color[0];
-                    cy = color[1];
-                    cz = color[2] * filter[0] * filter[1] * filter[2] * filter[3] * filter[4];*/
-
-                    /*color[0] = color[0] * filter[1];
-                    color[1] = color[1] * filter[1];
-                    color[2] = color[2] * filter[1];
-                    color[0] = color[0] * filter[2];
-                    color[1] = color[1] * filter[2];
-                    color[2] = color[2] * filter[2];
-                    color[0] = color[0] * filter[3];
-                    color[1] = color[1] * filter[3];
-                    color[2] = color[2] * filter[3];
-                    color[0] = color[0] * filter[4];
-                    color[1] = color[1] * filter[4];
-                    color[2] = color[2] * filter[4];*/
-                    image.at<cv::Vec3b>(cv::Point(px, py)) = color;
+                    //cout << cx << " " << cy << " " << cz << endl;
                 }
             }
+
+            //cout << totalcy << " " << totalcz << endl;
         }
+        
         firstFilter /= divide_val;
         secondFilter /= divide_val;
         thirdFilter /= divide_val;
         fourthFilter /= divide_val;
         fifthFilter /= divide_val;
 
-        ceil(firstFilter);
-        ceil(secondFilter);
-        ceil(thirdFilter);
-        ceil(fourthFilter);
-        ceil(fifthFilter);
+        round(firstFilter);
+        round(secondFilter);
+        round(thirdFilter);
+        round(fourthFilter);
+        round(fifthFilter);
 
         Filter fil;
         fil.firstFil = firstFilter;
@@ -248,47 +286,23 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers)
         fil.thirdFil = thirdFilter;
         fil.fourthFil = fourthFilter;
         fil.fifthFil = fifthFilter;
-        fil.debug = to_string(pointx) + " " + to_string(pointy);
-        fil.debugpix = to_string(col) + " " + to_string(row);
+        //fil.debug = to_string(pointx) + " " + to_string(pointy);
+        //fil.debugpix = to_string(col) + " " + to_string(row);
 
-        /*firstFilter += 128;
-        secondFilter += 128;
-        thirdFilter += 128;
-        fourthFilter += 128;
-        fifthFilter += 128;*/
+        //cout << fil.firstFil << " " << fil.secFil << " " << fil.thirdFil << " " << fil.fourthFil << " " << fil.fifthFil << endl;
 
-        /*if(firstFilter > 128 || firstFilter < -128) {
-            cout << "firstFilter: " << firstFilter << endl;
-        }
-
-        if(secondFilter > 128 || secondFilter < -128) {
-            cout << "secondFilter: " << secondFilter << endl;
-        }
-
-        if(thirdFilter > 128 || thirdFilter < -128) {
-            cout << "thirdFilter: " << thirdFilter << endl;
-        }
-
-        if(fourthFilter > 128 || fourthFilter < -128) {
-            cout << "fourthFilter: " << fourthFilter << endl;
-        }
-
-        if(fifthFilter > 128 || fifthFilter < -128) {
-            cout << "fifthFilter: " << fifthFilter << endl;
-        }*/
-
-        if(true
-            //find_if(pair_filters[pointy].begin(), pair_filters[pointy].begin())
-            ) {
+        if(true) {
             pair_filters[pointy].push_back(fil);
         }
 
-        if(col == 600 && row == 396) {
-            cv::circle(image, p, rad, (0, 255, 255), -1);
-        }
-
-        //cout << firstFilter << " " << secondFilter << " " << thirdFilter << " " << fourthFilter << " " << fifthFilter << endl;
     }
+    cvtColor(image, image, cv::COLOR_YCrCb2BGR);
+
+    //cout << startingColVal << " " << startingRowVal << " " << secondColVal << " " << secondRowVal << endl;
+
+    //cout << "points" << pointx << " " << pointy << endl;
+    lastPoints[0] = pointx;
+    lastPoints[1] = pointy;
 }
 
 float bump( float x)
@@ -309,4 +323,42 @@ float bump( float x)
         return ((float) 0.0);
     xx = (float) exp( (float) (4.0 * xx / (xx - 0.203636)));
     return (xx);
+}
+
+void getDiff(ifstream &filetxt, int* diff) {
+    streampos before = filetxt.tellg();
+    int firstCol = -1;
+    int secondCol = -1;
+    int firstRow = -1;
+    int secondRow = -1;
+    while(true) {
+        string parse[9];
+        filetxt >> parse[0] >> parse[1] >> parse[2] >> parse[3] >> parse[4] >> parse[5] >> parse[6] >> parse[7] >> parse[8];
+        int col = stoi(parse[1]);
+        int row = stoi(parse[2]);
+
+        if(firstCol == -1) {
+            firstCol = col;
+        }
+
+        if(firstRow == -1) {
+            firstRow = row;
+        }
+
+        if(secondCol == -1 && firstCol != col) {
+            secondCol = col;
+            break;
+        }
+
+        if(secondRow == -1 && firstRow != row) {
+            secondRow = row;
+        }
+    }
+
+    diff[0] = secondCol - firstCol;
+    diff[1] = secondRow - firstRow;
+
+    cout << diff[0] << " " << diff[1] << endl;
+
+    filetxt.seekg(before);
 }

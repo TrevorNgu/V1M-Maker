@@ -1,9 +1,9 @@
 struct Filter {
-    int firstFil;
-    int secFil;
-    int thirdFil;
-    int fourthFil;
-    int fifthFil;
+    float firstFil;
+    float secFil;
+    float thirdFil;
+    float fourthFil;
+    float fifthFil;
     float RGChrom;
     float BYChrom;
     string debug;
