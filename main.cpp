@@ -28,6 +28,8 @@ vector<int> col_vals;
 int main(int argc, char *argv[]) {
     string command = argv[1];
     vector<string> files;
+
+    // Checks argument prompt to see to target specific file or all 
     if(command == "ALL") {
         for(const auto & entry : filesystem::directory_iterator(to_convert)) {
             filesystem::path filepath = entry.path();
@@ -49,6 +51,11 @@ int main(int argc, char *argv[]) {
         files.push_back(command);
     }
 
+
+    int maxWidth = 0;
+    int maxHeight = 0;
+
+    // Processing all the files
     int current = 0;
     while(current != files.size()) {
         // Check if files exist, if so proceed
@@ -58,7 +65,8 @@ int main(int argc, char *argv[]) {
         command.erase(command.end() - 4, command.end());
 
         ifstream filetxt(to_convert + command + ".txt");
-
+        
+        // Exit if that's the case. NEED TO CHANGE SO THAT IT JUST CONTINUES
         if(!file.good() || !filetxt.good()) {
             cerr << "Error! One of the files does not exist." << endl;
             exit(-1);
@@ -97,13 +105,26 @@ int main(int argc, char *argv[]) {
         int lastPoints[2];
         setFilters(file, filetxt, image, headers, lastPoints);
         string magic = "V4";
-
+        
+        // If PPM, set header to V5 instead.
         if(ext == "ppm") {
             magic = "V5";
         }
         
+        // Set the header
         setHeader(magic, image.rows, image.cols, headers[0], row_space, col_space, headers[1], headers[2], to_file);
         cout << lastPoints[0] << " " << lastPoints[1] << endl;
+
+        // DEBUG: Check for the largest width and height
+        if(lastPoints[0] + 1 > maxWidth) {
+            maxWidth = lastPoints[0] + 1;
+        }
+
+        if(lastPoints[1] + 1 > maxHeight) {
+            maxHeight = lastPoints[1] + 1;
+        }
+
+        // Processing writing into file
         for(int i = 0; i < lastPoints[1] + 1; i++) {
             for(int j = 0; j < lastPoints[0] + 1; j++) {
                 int8_t first = pair_filters[i].at(j).firstFil + 128;
@@ -130,20 +151,25 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE);
+        // DEBUG: Show the image.
+        /*cv::namedWindow("Display Image", cv::WINDOW_AUTOSIZE);
         cv::imshow("Display Image", image);
-        cv::waitKey(0);
+        cv::waitKey(0);*/
         file.close();
         filetxt.close();
         to_file.close();
         current++;
     }
+
+    cout << "Max is: " << maxWidth << " " << maxHeight << endl;
 }
 
+// Takes BGR values and calculates the Monochrome value
 int createMonochrome(int blue, int green, int red) {
     return (blue + green + red) / 3;
 }
 
+// Takes BGR values and calculates R-G Chrominance
 int createRedGreen(int blue, int green, int red) {
     int rg = ((red - green) / 2) + 128;
     if(rg > 255) {
@@ -155,6 +181,7 @@ int createRedGreen(int blue, int green, int red) {
     return rg;
 }
 
+// Takes BGR values and calculates B-Y Chrominance
 int createBlueYellow(int blue, int green, int red) {
     int by = ((2 * blue - red - green) / 4) + 128;
     if(by > 255) {
@@ -166,11 +193,12 @@ int createBlueYellow(int blue, int green, int red) {
     return by;
 }
 
+// Sets header into file
 int setHeader(string mNum, int width, int height, int filterDiam, int vertSpace, int horSpace, int firstHorPos, int firstVertPos, ofstream &file) {
     file << mNum << "\n";
     file << width << "\n";
     file << height << "\n";
-    file << 8 << "\n";
+    file << 6 << "\n";
     file << filterDiam << "\n";
     file << vertSpace << "\n";
     file << horSpace << "\n";
@@ -180,9 +208,12 @@ int setHeader(string mNum, int width, int height, int filterDiam, int vertSpace,
     return 0;
 }
 
+// Sets filters into global map variable
 void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers, int* lastPoints) {
     bool first = true;
     vector<vector<Filter>> filters;
+
+    // Get image and set to YCrCb
     cv::cvtColor(image, image, cv::COLOR_BGR2YCrCb);
     int pointx;
     int pointy;
@@ -200,6 +231,7 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers,
             break;
         }
 
+        // Pulls all variables from text file
         int dia = stoi(parse[0]);
         int rad = dia / 2;
         int col = stoi(parse[1]);
@@ -241,6 +273,7 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers,
         //cv::circle(image, p, rad, (0, 0, 255), 1);
         //cout << pointx << ", " << pointy << endl;
 
+        // Within the diameter of the 1st current filter, calculate for each of the 5 numbers
         for (int px = x - r; px <= x + r; px++) {
             float totalcy = 0;
             float totalcz = 0;
@@ -268,18 +301,21 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers,
             //cout << totalcy << " " << totalcz << endl;
         }
         
+        // Divide ALL filters by the divide value defined in constant.h so it can fit into 1 byte
         firstFilter /= divide_val;
         secondFilter /= divide_val;
         thirdFilter /= divide_val;
         fourthFilter /= divide_val;
         fifthFilter /= divide_val;
 
+        // Round to closest number
         round(firstFilter);
         round(secondFilter);
         round(thirdFilter);
         round(fourthFilter);
         round(fifthFilter);
 
+        // Set filter
         Filter fil;
         fil.firstFil = firstFilter;
         fil.secFil = secondFilter;
@@ -325,6 +361,7 @@ float bump( float x)
     return (xx);
 }
 
+// Calculate the difference between the 1st and 2nd axis points (it just makes it easier to calculate where to start with each pixel on a file by file basis)
 void getDiff(ifstream &filetxt, int* diff) {
     streampos before = filetxt.tellg();
     int firstCol = -1;
