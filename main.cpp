@@ -66,10 +66,11 @@ int main(int argc, char *argv[]) {
 
         ifstream filetxt(to_convert + command + ".txt");
         
-        // Exit if that's the case. NEED TO CHANGE SO THAT IT JUST CONTINUES
+        // Continue if that's the case
         if(!file.good() || !filetxt.good()) {
             cerr << "Error! One of the files does not exist." << endl;
-            exit(-1);
+            current++;
+            continue;
         }
 
         // Disgusting parsing of the PGM/PPM file
@@ -104,7 +105,6 @@ int main(int argc, char *argv[]) {
         int headers[3];
         int lastPoints[2];
         setFilters(file, filetxt, image, headers, lastPoints);
-        string magic = "V4";
         
         // If PPM, set header to V5 instead.
         if(ext == "ppm") {
@@ -142,9 +142,9 @@ int main(int argc, char *argv[]) {
                     //pair_filters[i].at(j).BYChrom + 128;
                     to_file << rg << by;
                 } else {
-                    int8_t rg = 0;
+                    int8_t rg = 127;
                     //pair_filters[i].at(j).RGChrom + 128;
-                    int8_t by = 0;
+                    int8_t by = 127;
                     //pair_filters[i].at(j).BYChrom + 128;
                     to_file << rg << by;
                 }
@@ -161,7 +161,8 @@ int main(int argc, char *argv[]) {
         current++;
     }
 
-    cout << "Max is: " << maxWidth << " " << maxHeight << endl;
+    // DEBUG: Just a way to see the largest width in all images and the largest height in all images
+    //cout << "Max is: " << maxWidth << " " << maxHeight << endl;
 }
 
 // Takes BGR values and calculates the Monochrome value
@@ -198,7 +199,7 @@ int setHeader(string mNum, int width, int height, int filterDiam, int vertSpace,
     file << mNum << "\n";
     file << width << "\n";
     file << height << "\n";
-    file << 6 << "\n";
+    file << diameter << "\n";
     file << filterDiam << "\n";
     file << vertSpace << "\n";
     file << horSpace << "\n";
@@ -252,6 +253,7 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers,
             first = false;
         }
 
+        // Set variables
         cv::Point p(col, row);
         int x = col;
         int y = row;
@@ -267,9 +269,7 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers,
         pointx = col / diff[0];
         pointy = row / diff[1];
 
-        //pointx = col;
-        //pointy = row;
-
+        // DEBUG: Uncomment to see circles
         //cv::circle(image, p, rad, (0, 0, 255), 1);
         //cout << pointx << ", " << pointy << endl;
 
@@ -334,9 +334,6 @@ void setFilters(ifstream &file, ifstream &filetxt, cv::Mat &image, int* headers,
     }
     cvtColor(image, image, cv::COLOR_YCrCb2BGR);
 
-    //cout << startingColVal << " " << startingRowVal << " " << secondColVal << " " << secondRowVal << endl;
-
-    //cout << "points" << pointx << " " << pointy << endl;
     lastPoints[0] = pointx;
     lastPoints[1] = pointy;
 }
