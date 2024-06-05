@@ -1,0 +1,3 @@
+/home/bark/V1M/V1M-Maker/CMakeFiles/V1M-Maker.dir
+/home/bark/V1M/V1M-Maker/CMakeFiles/edit_cache.dir
+/home/bark/V1M/V1M-Maker/CMakeFiles/rebuild_cache.dir
